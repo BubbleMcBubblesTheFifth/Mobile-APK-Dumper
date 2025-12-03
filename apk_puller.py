@@ -6,8 +6,11 @@ from pathlib import Path
 from termcolor import colored
 
 # Replace these with their appropriate fields
-ADB = "/path/to/adb"
-JADX = "/path/to/jadx"
+ADB = "C:\\Users\\Nghi Nguyen\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe"
+JADX = "C:\\Users\\Nghi Nguyen\\Documents\\jadx\\bin\\jadx.bat"
+# fixed column widths and truncation
+NAME_COL_W = 37
+PATH_COL_W = 70
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,17 +88,49 @@ def filter_packages(packages: List[str], filter_str: str) -> List[str]:
     """Filter the list of packages based on the filter string."""
     return [pkg for pkg in packages if filter_str.lower() in pkg.lower()]
 
+def print_packages(packages: List[str]) -> None:
+    for pkg in packages:
+        parsed = parse_package_entry(pkg)
+        if parsed:
+            apk_path_on_device, pkg_name = parsed
+        else:
+            # fallback parsing if entry is unexpected
+            if "=" in pkg:
+                left, right = pkg.split("=", 1)
+                apk_path_on_device = left.replace("package:", "")
+                pkg_name = right
+            else:
+                apk_path_on_device = pkg.replace("package:", "")
+                pkg_name = ""
+
+        def trunc(string: str, width: int) -> str:
+            # if the string is longer than width, truncate and add "..."
+            return string if len(string) <= width else string[: width - 3] + "..."
+
+        # pad the string for table neatness. 
+        name_display = trunc(pkg_name, NAME_COL_W).ljust(NAME_COL_W)
+        path_display = trunc(apk_path_on_device, PATH_COL_W).ljust(PATH_COL_W)
+
+        print(
+            colored("| ", "cyan")
+            + colored(name_display, "white")
+            + colored(" | ", "cyan")
+            + colored(path_display, "white")
+            + colored(" |", "cyan")
+        )
 
 def main() -> None:
     args = parse_args()
 
+    # List packages if arg supplied
     if args.list_packages:
         try:
             packages = list_packages()
+            print(colored("| Package Name \t\t\t\t| Path on Device\t\t\t\t\t\t\t|", "cyan"))
+            print(colored("-"*114, "cyan"))
             if args.filter:
-                packages = filter_packages(packages, args.filter)
-            for pkg in packages:
-                print(pkg)
+                packages = filter_packages(packages, args.filter) 
+            print_packages(packages)
         except subprocess.CalledProcessError as e:
             print(f"Error listing packages: {e}")
         return
@@ -105,7 +140,7 @@ def main() -> None:
         print(colored("No package supplied. Use -p/--package to specify a package, or -l to list packages.", "red"))
         return
 
-        
+    # Main flow: pull and decompile specified package(s)
     try:
         # prepare base output directory
         if args.output_dir:
